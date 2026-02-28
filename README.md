@@ -1,12 +1,22 @@
-# teams_freepbx
+# SIP BLF to Microsoft Teams Presence Sync
+
+**teams-sip-blf** — Sync Microsoft Teams presence from your PBX (FreePBX, Asterisk) using SIP BLF (Busy Lamp Field) and Microsoft Graph.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Go 1.21+](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://go.dev/)
 
 **Version:** 0.0.3
 
-SIP BLF → Microsoft Teams presence sync: a small service that registers to a SIP endpoint (e.g. FreePBX/Asterisk), subscribes to BLF (Busy Lamp Field) for a list of extensions, and updates each user's Teams presence in Microsoft Graph when their line state changes.
+A small service that registers to a SIP endpoint (FreePBX, Asterisk, or any PBX with BLF support), subscribes to BLF (Busy Lamp Field) for a list of extensions, and updates each user's **Microsoft Teams presence** in **Microsoft Graph** when their line state changes. Built for teams using both a SIP PBX and Microsoft 365.
 
 **Notice: This is a proof of concept.** It is not officially supported and may be unsuitable for production use. Use at your own risk.
 
-## Overview
+## What it does
+
+- **SIP BLF** — Subscribes to Busy Lamp Field (dialog event package) on your PBX and maps extension state to presence.
+- **Microsoft Teams presence** — Updates each user's availability (Available / Busy) in Teams via the Microsoft Graph API.
+- **FreePBX & Asterisk** — Works with common SIP PBX setups; supports digest auth, STUN for NAT, and optional status messages.
+
+## How it works
 
 - **SIP client**: Registers to the PBX (From header uses SIP username and server host so the PBX can match the peer) and sends SUBSCRIBE (dialog event package) for each extension in config. Handles 401 digest auth on SUBSCRIBE.
 - **BLF**: On NOTIFY, parses dialog-info XML and maps state (idle / ringing / busy) to Graph availability (Available / Busy).
@@ -118,6 +128,13 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (Se
 - **PATCH** – Backward-compatible bug fixes and small improvements.
 
 The current version is recorded in the [VERSION](VERSION) file and in the [CHANGELOG](CHANGELOG.md). Pre-1.0.0 versions (e.g. 0.0.x, 0.1.x) are considered initial development; the public API and behaviour may still change.
+
+## Related
+
+- [Microsoft Graph presence API](https://learn.microsoft.com/en-us/graph/api/resources/presence) — Set user presence from an application.
+- [SIP dialog event package (RFC 4235)](https://www.rfc-editor.org/rfc/rfc4235) — BLF/dialog-info for line state.
+
+To help others find this project, consider adding topics such as `microsoft-teams`, `sip`, `blf`, `freepbx`, `asterisk`, `presence`, `microsoft-graph`, and `go` in the repository settings.
 
 ## License
 
