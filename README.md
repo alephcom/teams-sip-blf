@@ -78,6 +78,10 @@ When the sync service runs behind NAT, set `SIP_CONTACT_IP=auto` (or `stun` or l
 
 ## Build and run
 
+Pre-built binaries for Linux (amd64) and Windows (amd64) are attached to each [release](https://github.com/alephcom/teams-sip-blf/releases) as `sip-blf-sync-linux-amd64` and `sip-blf-sync-windows-amd64.exe`.
+
+To build from source:
+
 ```bash
 go build -o bin/sip-blf-sync ./cmd/sip-blf-sync/
 ./bin/sip-blf-sync

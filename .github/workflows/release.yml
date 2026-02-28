@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build Linux amd64
+        run: GOOS=linux GOARCH=amd64 go build -o sip-blf-sync-linux-amd64 ./cmd/sip-blf-sync/
+
+      - name: Build Windows amd64
+        run: GOOS=windows GOARCH=amd64 go build -o sip-blf-sync-windows-amd64.exe ./cmd/sip-blf-sync/
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sip-blf-sync-linux-amd64
+            sip-blf-sync-windows-amd64.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
