@@ -24,39 +24,103 @@ type Event struct {
 
 // DialogInfo is the RFC 4235 dialog event package XML (simplified).
 // Full spec: https://www.rfc-editor.org/rfc/rfc4235
+// The document uses namespace urn:ietf:params:xml:ns:dialog-info; dialog
+// state is a child element <state>, not an attribute.
 type DialogInfo struct {
-	XMLName xml.Name `xml:"dialog-info"`
-	Entity  string  `xml:"entity,attr"` // e.g. sip:1001@server
-	Dialogs []Dialog `xml:"dialog"`
+	XMLName xml.Name `xml:"urn:ietf:params:xml:ns:dialog-info dialog-info"`
+	Entity  string   `xml:"entity,attr"` // e.g. sip:1001@server
+	Dialogs []Dialog `xml:"urn:ietf:params:xml:ns:dialog-info dialog"`
 }
 
 // Dialog represents a single dialog in the dialog-info document.
+// Per RFC 4235, the dialog state is a child <state> element (e.g. <state>confirmed</state>).
+// StateAttr supports PBXs that send state as an attribute on <dialog>.
 type Dialog struct {
-	ID     string `xml:"id,attr"`
-	State  string `xml:"state,attr"`  // full, partial, terminated
+	ID        string `xml:"id,attr"`
+	State     string `xml:"urn:ietf:params:xml:ns:dialog-info state"` // child element content
+	StateAttr string `xml:"state,attr"` // optional; some PBXs send state as attribute
 	Direction string `xml:"direction,attr"`
-	Local  struct {
-		Identity string `xml:"identity"`
-		Target   string `xml:"target"`
-	} `xml:"local"`
+	Local     struct {
+		Identity string `xml:"urn:ietf:params:xml:ns:dialog-info identity"`
+		Target   string `xml:"urn:ietf:params:xml:ns:dialog-info target"`
+	} `xml:"urn:ietf:params:xml:ns:dialog-info local"`
 	Remote struct {
-		Identity string `xml:"identity"`
-		Target   string `xml:"target"`
-	} `xml:"remote"`
+		Identity string `xml:"urn:ietf:params:xml:ns:dialog-info identity"`
+		Target   string `xml:"urn:ietf:params:xml:ns:dialog-info target"`
+	} `xml:"urn:ietf:params:xml:ns:dialog-info remote"`
+}
+
+// dialogState returns the effective dialog state (child <state> element or state attribute).
+func (d *Dialog) dialogState() string {
+	s := strings.TrimSpace(d.State)
+	if s == "" {
+		s = strings.TrimSpace(d.StateAttr)
+	}
+	return strings.ToLower(s)
+}
+
+// dialogNoNS is used when the document has no default namespace (some PBXs omit xmlns).
+type dialogNoNS struct {
+	ID        string `xml:"id,attr"`
+	State     string `xml:"state"`
+	StateAttr string `xml:"state,attr"`
+}
+
+type dialogInfoNoNS struct {
+	XMLName xml.Name   `xml:"dialog-info"`
+	Entity  string     `xml:"entity,attr"`
+	Dialogs []dialogNoNS `xml:"dialog"`
 }
 
 // ParseDialogInfo parses RFC 4235 dialog-info XML and returns the effective
 // BLF state: idle (no dialogs or all terminated), ringing (early/trying), or busy (confirmed).
+// Uses the RFC namespace first; if unmarshal fails (e.g. PBX omits xmlns), retries without namespace.
 func ParseDialogInfo(body []byte) State {
 	var info DialogInfo
-	if err := xml.Unmarshal(body, &info); err != nil {
+	if err := xml.Unmarshal(body, &info); err == nil {
+		return dialogsToState(info.Dialogs)
+	}
+	var infoNoNS dialogInfoNoNS
+	if err := xml.Unmarshal(body, &infoNoNS); err != nil {
 		return StateUnknown
 	}
-	if len(info.Dialogs) == 0 {
+	return dialogsNoNSToState(infoNoNS.Dialogs)
+}
+
+func dialogsToState(dialogs []Dialog) State {
+	if len(dialogs) == 0 {
 		return StateIdle
 	}
-	for _, d := range info.Dialogs {
-		s := strings.ToLower(d.State)
+	for _, d := range dialogs {
+		s := d.dialogState()
+		switch {
+		case s == "terminated" || s == "":
+			continue
+		case s == "trying" || s == "early" || s == "proceeding":
+			return StateRinging
+		case s == "confirmed":
+			return StateBusy
+		default:
+			return StateBusy
+		}
+	}
+	return StateIdle
+}
+
+func dialogStateStr(s, sAttr string) string {
+	s = strings.TrimSpace(strings.ToLower(s))
+	if s == "" {
+		s = strings.TrimSpace(strings.ToLower(sAttr))
+	}
+	return s
+}
+
+func dialogsNoNSToState(dialogs []dialogNoNS) State {
+	if len(dialogs) == 0 {
+		return StateIdle
+	}
+	for _, d := range dialogs {
+		s := dialogStateStr(d.State, d.StateAttr)
 		switch {
 		case s == "terminated" || s == "":
 			continue

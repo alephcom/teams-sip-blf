@@ -1,6 +1,6 @@
 # teams_freepbx
 
-**Version:** 0.0.2
+**Version:** 0.0.3
 
 SIP BLF → Microsoft Teams presence sync: a small service that registers to a SIP endpoint (e.g. FreePBX/Asterisk), subscribes to BLF (Busy Lamp Field) for a list of extensions, and updates each user's Teams presence in Microsoft Graph when their line state changes.
 
