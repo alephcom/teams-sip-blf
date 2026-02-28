@@ -1,0 +1,5 @@
+.env
+.env.local
+bin/
+config/extensions.json
+config/presence-state.json

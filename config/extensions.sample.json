@@ -1,0 +1,10 @@
+[
+  {
+    "extension": "1001",
+    "email": "user1@example.com"
+  },
+  {
+    "extension": "1002",
+    "email": "user2@example.com"
+  }
+]
