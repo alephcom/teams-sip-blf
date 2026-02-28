@@ -1,6 +1,6 @@
 # teams_freepbx
 
-**Version:** 0.0.1
+**Version:** 0.0.2
 
 SIP BLF → Microsoft Teams presence sync: a small service that registers to a SIP endpoint (e.g. FreePBX/Asterisk), subscribes to BLF (Busy Lamp Field) for a list of extensions, and updates each user's Teams presence in Microsoft Graph when their line state changes.
 
@@ -31,6 +31,8 @@ Edit `config/extensions.json` (or set `EXTENSIONS_JSON` to another path):
   { "extension": "1002", "email": "user2@contoso.com" }
 ]
 ```
+
+If the JSON file does not exist, the app will try the same path with `.json` replaced by `.csv` (e.g. `config/extensions.csv`). The CSV format is two columns: `extension`, `email`. A header row `extension,email` is optional (case-insensitive) and will be skipped.
 
 Each `email` is the user’s sign-in (userPrincipalName); the app resolves it to the Graph object ID (GUID) for setPresence.
 

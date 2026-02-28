@@ -2,4 +2,5 @@
 .env.local
 bin/
 config/extensions.json
+config/extensions.csv
 config/presence-state.json

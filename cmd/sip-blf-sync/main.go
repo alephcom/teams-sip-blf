@@ -22,11 +22,12 @@ func main() {
 	extensionsPath := getEnv("EXTENSIONS_JSON", "config/extensions.json")
 	statePath := getEnv("PRESENCE_STATE_JSON", "config/presence-state.json")
 
-	extensions, err := loadExtensions(extensionsPath)
+	extensions, loadedFrom, err := loadExtensionsFromPath(extensionsPath)
 	if err != nil {
 		slog.Error("load extensions", "error", err, "path", extensionsPath)
 		os.Exit(1)
 	}
+	slog.Info("loaded extensions", "count", len(extensions), "from", loadedFrom)
 
 	extList := make([]string, 0, len(extensions))
 	emailByExt := make(map[string]string)
