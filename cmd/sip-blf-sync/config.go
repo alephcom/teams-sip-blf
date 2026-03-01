@@ -10,6 +10,8 @@ import (
 	"github.com/darrenwiebe/teams_freepbx/internal/sip"
 )
 
+const generalSection = "general"
+
 // ExtensionEntry is one row from extensions.json or extensions.csv.
 type ExtensionEntry struct {
 	Extension string `json:"extension"`
@@ -56,6 +58,60 @@ func loadExtensionsCSV(path string) ([]ExtensionEntry, error) {
 			continue
 		}
 		list = append(list, ExtensionEntry{Extension: ext, Email: email})
+	}
+	return list, nil
+}
+
+// loadExtensionsVoicemail reads extension and email from an Asterisk voicemail.conf.
+// Intended for deployments where the app runs on the Asterisk/FreePBX host. Only lines
+// that look like mailbox definitions (extension=password,name,email,...) in context
+// sections are used. Section [general] is skipped. The third comma-separated field is
+// taken as email; if it contains | (multiple addresses), the first is used. Duplicate
+// extensions keep the first occurrence.
+func loadExtensionsVoicemail(path string) ([]ExtensionEntry, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(data), "\n")
+	var list []ExtensionEntry
+	seen := make(map[string]bool)
+	var section string
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "["), "]"))
+			continue
+		}
+		if section == generalSection {
+			continue
+		}
+		eq := strings.Index(line, "=")
+		if eq < 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:eq])
+		value := strings.TrimSpace(line[eq+1:])
+		parts := strings.Split(value, ",")
+		if len(parts) < 3 {
+			continue
+		}
+		emailField := strings.TrimSpace(parts[2])
+		if emailField == "" || !strings.Contains(emailField, "@") {
+			continue
+		}
+		email := strings.TrimSpace(strings.Split(emailField, "|")[0])
+		if email == "" {
+			continue
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		list = append(list, ExtensionEntry{Extension: key, Email: email})
 	}
 	return list, nil
 }

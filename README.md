@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Go 1.21+](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://go.dev/)
 
-**Version:** 0.0.3
+**Version:** 0.0.4
 
 A small service that registers to a SIP endpoint (FreePBX, Asterisk, or any PBX with BLF support), subscribes to BLF (Busy Lamp Field) for a list of extensions, and updates each user's **Microsoft Teams presence** in **Microsoft Graph** when their line state changes. Built for teams using both a SIP PBX and Microsoft 365.
 
@@ -46,6 +46,8 @@ If the JSON file does not exist, the app will try the same path with `.json` rep
 
 Each `email` is the user’s sign-in (userPrincipalName); the app resolves it to the Graph object ID (GUID) for setPresence.
 
+**Alternatively**, set `VOICEMAIL_CONF` to the path of an Asterisk/FreePBX `voicemail.conf`. When set, the app loads extension and email from that file instead of `EXTENSIONS_JSON`. It parses context sections (e.g. `[default]`) for mailbox lines in the form `extension=password,name,email,...`; the third comma-separated field is used as email. If that field contains multiple addresses separated by `|`, the first is used. The `[general]` section is skipped. This is intended for deployments where the app is installed directly on the Asterisk/FreePBX server and can read the existing voicemail configuration.
+
 ### 2. Environment
 
 Copy `.env.example` to `.env` and set:
@@ -62,7 +64,8 @@ Copy `.env.example` to `.env` and set:
 | `AZURE_TENANT_ID`     | Azure AD tenant ID                                                                                                                |
 | `AZURE_CLIENT_ID`     | App (client) ID                                                                                                                   |
 | `AZURE_CLIENT_SECRET` | Client secret                                                                                                                     |
-| `EXTENSIONS_JSON`     | Path to extensions file (default: `config/extensions.json`)                                                                       |
+| `EXTENSIONS_JSON`     | Path to extensions file (default: `config/extensions.json`). Ignored when `VOICEMAIL_CONF` is set.                                |
+| `VOICEMAIL_CONF`      | Optional. Path to Asterisk voicemail.conf; when set, extension/email are read from it instead of JSON/CSV.                       |
 | `PRESENCE_STATE_JSON` | Path to session ID state file (default: `config/presence-state.json`)                                                             |
 | `SIP_LISTEN`          | Address to bind for NOTIFY (default: `0.0.0.0:5060` when using STUN, else `SIP_CONTACT_IP:5060`)                                  |
 
@@ -116,7 +119,7 @@ The service will:
 - `internal/sip/` – SIP registration and BLF SUBSCRIBE/NOTIFY (sipgo).
 - `internal/blf/` – BLF NOTIFY body parsing (dialog-info) and state → Graph availability mapping.
 - `internal/graph/` – Azure auth, state file, and Microsoft Graph `setPresence` / `setStatusMessage`.
-- `config/extensions.json` – extension → email mapping.
+- `config/extensions.json` – extension → email mapping (or set `VOICEMAIL_CONF` to an Asterisk voicemail.conf path).
 - `config/presence-state.json` – optional state file (used for persistence if needed).
 
 ## Versioning

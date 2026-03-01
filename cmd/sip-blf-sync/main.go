@@ -20,12 +20,30 @@ func main() {
 	_ = godotenv.Load()
 
 	extensionsPath := getEnv("EXTENSIONS_JSON", "config/extensions.json")
+	voicemailConf := strings.TrimSpace(getEnv("VOICEMAIL_CONF", ""))
 	statePath := getEnv("PRESENCE_STATE_JSON", "config/presence-state.json")
 
-	extensions, loadedFrom, err := loadExtensionsFromPath(extensionsPath)
-	if err != nil {
-		slog.Error("load extensions", "error", err, "path", extensionsPath)
-		os.Exit(1)
+	var extensions []ExtensionEntry
+	var loadedFrom string
+	if voicemailConf != "" {
+		if _, err := os.Stat(voicemailConf); err != nil {
+			slog.Error("voicemail conf file not found", "path", voicemailConf, "error", err)
+			os.Exit(1)
+		}
+		var err error
+		extensions, err = loadExtensionsVoicemail(voicemailConf)
+		if err != nil {
+			slog.Error("load voicemail conf", "error", err, "path", voicemailConf)
+			os.Exit(1)
+		}
+		loadedFrom = voicemailConf
+	} else {
+		var err error
+		extensions, loadedFrom, err = loadExtensionsFromPath(extensionsPath)
+		if err != nil {
+			slog.Error("load extensions", "error", err, "path", extensionsPath)
+			os.Exit(1)
+		}
 	}
 	slog.Info("loaded extensions", "count", len(extensions), "from", loadedFrom)
 
