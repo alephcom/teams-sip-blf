@@ -137,8 +137,6 @@ The current version is recorded in the [VERSION](VERSION) file and in the [CHANG
 - [Microsoft Graph presence API](https://learn.microsoft.com/en-us/graph/api/resources/presence) — Set user presence from an application.
 - [SIP dialog event package (RFC 4235)](https://www.rfc-editor.org/rfc/rfc4235) — BLF/dialog-info for line state.
 
-To help others find this project, consider adding topics such as `microsoft-teams`, `sip`, `blf`, `freepbx`, `asterisk`, `presence`, `microsoft-graph`, and `go` in the repository settings.
-
 ## License
 
 MIT License. See [LICENSE](LICENSE).
