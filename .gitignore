@@ -6,3 +6,4 @@ config/extensions.csv
 config/presence-state.json
 sip-blf-sync-linux-amd64
 sip-blf-sync-windows-amd64.exe
+sip-blf-sync
