@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `PROVIDER=sip|cucm` line-state backends: SIP BLF (default) or CUCM CTI via JTAPI sidecar HTTP events
+- `internal/provider` interface and SIP adapter; `internal/cucm` HTTP ingress (`POST /v1/line-state`)
+- Java sidecar under `sidecar/cucm-jtapi/` for CUCM 15 JTAPI on Linux (jars from CUCM Plugins, not committed)
+
 ## [0.0.4] - 2025-02-28
 
 ### Added

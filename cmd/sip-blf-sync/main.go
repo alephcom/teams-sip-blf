@@ -11,7 +11,9 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/darrenwiebe/teams_freepbx/internal/blf"
+	"github.com/darrenwiebe/teams_freepbx/internal/cucm"
 	"github.com/darrenwiebe/teams_freepbx/internal/graph"
+	"github.com/darrenwiebe/teams_freepbx/internal/provider"
 	"github.com/darrenwiebe/teams_freepbx/internal/sip"
 )
 
@@ -22,6 +24,7 @@ func main() {
 	extensionsPath := getEnv("EXTENSIONS_JSON", "config/extensions.json")
 	voicemailConf := strings.TrimSpace(getEnv("VOICEMAIL_CONF", ""))
 	statePath := getEnv("PRESENCE_STATE_JSON", "config/presence-state.json")
+	providerName := strings.ToLower(strings.TrimSpace(getEnv("PROVIDER", "sip")))
 
 	var extensions []ExtensionEntry
 	var loadedFrom string
@@ -65,10 +68,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	onBLF := func(extension string, state blf.State) {
+	onLineState := func(extension string, state blf.State) {
 		email, ok := emailByExt[extension]
 		if !ok {
-			slog.Warn("BLF for unknown extension", "extension", extension)
+			slog.Warn("line state for unknown extension", "extension", extension)
 			return
 		}
 		availability, activity := state.ToGraph()
@@ -80,6 +83,36 @@ func main() {
 		slog.Info("presence updated", "extension", extension, "state", state, "availability", availability)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var lineProvider provider.Provider
+	switch providerName {
+	case "sip":
+		lineProvider, err = newSIPProvider(extList, onLineState)
+	case "cucm":
+		lineProvider = newCUCMProvider(onLineState)
+	default:
+		slog.Error("unknown PROVIDER (use sip or cucm)", "provider", providerName)
+		os.Exit(1)
+	}
+	if err != nil {
+		slog.Error("create provider", "provider", providerName, "error", err)
+		os.Exit(1)
+	}
+	defer lineProvider.Close()
+
+	if err := lineProvider.Start(ctx); err != nil {
+		slog.Error("start provider", "provider", providerName, "error", err)
+		os.Exit(1)
+	}
+
+	slog.Info("sip-blf-sync running", "provider", providerName, "extensions", len(extList))
+	<-ctx.Done()
+	slog.Info("shutting down")
+}
+
+func newSIPProvider(extList []string, onLineState provider.Handler) (provider.Provider, error) {
 	stunServersRaw := strings.Split(getEnv("STUN_SERVERS", "stun.l.google.com,stun2.l.google.com,stun3.l.google.com,stun4.l.google.com"), ",")
 	stunServers := make([]string, 0, len(stunServersRaw))
 	for _, s := range stunServersRaw {
@@ -98,42 +131,31 @@ func main() {
 	}
 
 	if err := sip.ResolveContactIfNeeded(&sipCfg, slog.Default()); err != nil {
-		slog.Error("STUN discovery failed", "error", err)
-		os.Exit(1)
+		return nil, err
 	}
 	if sip.IsContactSentinel(sipCfg.ContactIP) {
-		slog.Error("SIP_CONTACT_IP is auto/stun/empty but STUN did not set a valid address; check STUN_SERVERS and network")
-		os.Exit(1)
+		return nil, errContactUnresolved
 	}
 
-	sipClient, err := sip.NewClient(sipCfg, extList, onBLF)
-	if err != nil {
-		slog.Error("create sip client", "error", err)
-		os.Exit(1)
-	}
-	defer sipClient.Close()
+	listenAddr := strings.TrimSpace(getEnv("SIP_LISTEN", defaultListenAddr(sipCfg)))
+	return provider.NewSIP(provider.SIPConfig{
+		Config:     sipCfg,
+		ListenAddr: listenAddr,
+	}, extList, onLineState)
+}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+func newCUCMProvider(onLineState provider.Handler) provider.Provider {
+	return cucm.NewServer(cucm.Config{
+		ListenAddr: strings.TrimSpace(getEnv("CUCM_EVENT_LISTEN", "127.0.0.1:8090")),
+		Token:      getEnv("CUCM_EVENT_TOKEN", ""),
+	}, onLineState)
+}
 
-	go func() {
-		listenAddr := strings.TrimSpace(getEnv("SIP_LISTEN", defaultListenAddr(sipCfg)))
-		if err := sipClient.ListenAndServe(ctx, sipCfg.Transport, listenAddr); err != nil && ctx.Err() == nil {
-			slog.Error("sip server", "error", err)
-		}
-	}()
+// errContactUnresolved is returned when STUN was requested but ContactIP is still a sentinel.
+var errContactUnresolved = &contactUnresolvedError{}
 
-	if err := sipClient.Register(ctx); err != nil {
-		slog.Error("register", "error", err)
-		os.Exit(1)
-	}
+type contactUnresolvedError struct{}
 
-	if err := sipClient.Subscribe(ctx); err != nil {
-		slog.Error("subscribe", "error", err)
-		os.Exit(1)
-	}
-
-	slog.Info("sip-blf-sync running", "extensions", len(extList))
-	<-ctx.Done()
-	slog.Info("shutting down")
+func (e *contactUnresolvedError) Error() string {
+	return "SIP_CONTACT_IP is auto/stun/empty but STUN did not set a valid address; check STUN_SERVERS and network"
 }
