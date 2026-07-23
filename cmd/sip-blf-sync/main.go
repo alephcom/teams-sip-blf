@@ -2,15 +2,20 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 
 	"github.com/darrenwiebe/teams_freepbx/internal/blf"
+	"github.com/darrenwiebe/teams_freepbx/internal/extensions"
 	"github.com/darrenwiebe/teams_freepbx/internal/graph"
 	"github.com/darrenwiebe/teams_freepbx/internal/sip"
 )
@@ -21,35 +26,48 @@ func main() {
 
 	extensionsPath := getEnv("EXTENSIONS_JSON", "config/extensions.json")
 	voicemailConf := strings.TrimSpace(getEnv("VOICEMAIL_CONF", ""))
+	extensionsURL := strings.TrimSpace(getEnv("EXTENSIONS_URL", ""))
+	extensionsToken := strings.TrimSpace(getEnv("EXTENSIONS_TOKEN", ""))
+	refreshSec, _ := strconv.Atoi(getEnv("EXTENSIONS_REFRESH_SECONDS", "0"))
 	statePath := getEnv("PRESENCE_STATE_JSON", "config/presence-state.json")
 
-	var extensions []ExtensionEntry
+	var list []extensions.Entry
 	var loadedFrom string
-	if voicemailConf != "" {
+	switch {
+	case voicemailConf != "":
 		if _, err := os.Stat(voicemailConf); err != nil {
 			slog.Error("voicemail conf file not found", "path", voicemailConf, "error", err)
 			os.Exit(1)
 		}
 		var err error
-		extensions, err = loadExtensionsVoicemail(voicemailConf)
+		list, err = extensions.LoadVoicemail(voicemailConf)
 		if err != nil {
 			slog.Error("load voicemail conf", "error", err, "path", voicemailConf)
 			os.Exit(1)
 		}
 		loadedFrom = voicemailConf
-	} else {
+	case extensionsURL != "":
 		var err error
-		extensions, loadedFrom, err = loadExtensionsFromPath(extensionsPath)
+		list, err = extensions.LoadFromURL(context.Background(), extensionsURL, extensionsToken)
+		if err != nil {
+			slog.Error("load extensions URL", "error", err, "url", extensionsURL)
+			os.Exit(1)
+		}
+		loadedFrom = extensionsURL
+	default:
+		var err error
+		list, loadedFrom, err = extensions.LoadFromPath(extensionsPath)
 		if err != nil {
 			slog.Error("load extensions", "error", err, "path", extensionsPath)
 			os.Exit(1)
 		}
 	}
-	slog.Info("loaded extensions", "count", len(extensions), "from", loadedFrom)
+	slog.Info("loaded extensions", "count", len(list), "from", loadedFrom)
 
-	extList := make([]string, 0, len(extensions))
-	emailByExt := make(map[string]string)
-	for _, e := range extensions {
+	extList := make([]string, 0, len(list))
+	var emailMu sync.RWMutex
+	emailByExt := make(map[string]string, len(list))
+	for _, e := range list {
 		extList = append(extList, e.Extension)
 		emailByExt[e.Extension] = e.Email
 	}
@@ -66,7 +84,9 @@ func main() {
 	}
 
 	onBLF := func(extension string, state blf.State) {
+		emailMu.RLock()
 		email, ok := emailByExt[extension]
+		emailMu.RUnlock()
 		if !ok {
 			slog.Warn("BLF for unknown extension", "extension", extension)
 			return
@@ -115,6 +135,23 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if extensionsURL != "" && refreshSec > 0 {
+		extensions.StartRefresh(ctx, extensionsURL, extensionsToken, time.Duration(refreshSec)*time.Second,
+			func(updated []extensions.Entry) {
+				next := make(map[string]string, len(updated))
+				for _, e := range updated {
+					next[e.Extension] = e.Email
+				}
+				emailMu.Lock()
+				emailByExt = next
+				emailMu.Unlock()
+			},
+			func(format string, args ...any) {
+				slog.Info(fmt.Sprintf(format, args...))
+			},
+		)
+	}
 
 	go func() {
 		listenAddr := strings.TrimSpace(getEnv("SIP_LISTEN", defaultListenAddr(sipCfg)))

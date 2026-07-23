@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `EXTENSIONS_URL` / `EXTENSIONS_TOKEN`: load mapped `{extension,email}` from a central PBX-to-Teams registry (self-hosted or hosted). Priority: `VOICEMAIL_CONF` > `EXTENSIONS_URL` > `EXTENSIONS_JSON`/CSV.
+- Optional `EXTENSIONS_REFRESH_SECONDS` to refresh the in-memory email map from the URL without restarting (BLF subscriptions still use the initial extension list).
+- Shared `internal/extensions` package for JSON, CSV, voicemail.conf, and URL loaders.
+
 ## [0.0.4] - 2025-02-28
 
 ### Added

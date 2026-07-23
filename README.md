@@ -33,6 +33,14 @@ A small service that registers to a SIP endpoint (FreePBX, Asterisk, or any PBX 
 
 ### 1. Extensions and emails
 
+Sources are tried in this order (first set wins):
+
+1. **`VOICEMAIL_CONF`** — Asterisk/FreePBX `voicemail.conf` on the PBX host
+2. **`EXTENSIONS_URL`** (+ optional `EXTENSIONS_TOKEN`) — central PBX-to-Teams registry
+3. **`EXTENSIONS_JSON`** / CSV — local file
+
+#### Local JSON / CSV
+
 Edit `config/extensions.json` (or set `EXTENSIONS_JSON` to another path):
 
 ```json
@@ -46,7 +54,20 @@ If the JSON file does not exist, the app will try the same path with `.json` rep
 
 Each `email` is the user’s sign-in (userPrincipalName); the app resolves it to the Graph object ID (GUID) for setPresence.
 
-**Alternatively**, set `VOICEMAIL_CONF` to the path of an Asterisk/FreePBX `voicemail.conf`. When set, the app loads extension and email from that file instead of `EXTENSIONS_JSON`. It parses context sections (e.g. `[default]`) for mailbox lines in the form `extension=password,name,email,...`; the third comma-separated field is used as email. If that field contains multiple addresses separated by `|`, the first is used. The `[general]` section is skipped. This is intended for deployments where the app is installed directly on the Asterisk/FreePBX server and can read the existing voicemail configuration.
+#### Central registry (`EXTENSIONS_URL`)
+
+Point at a self-hosted or hosted [PBX-to-Teams](https://github.com/alephcom/pbx-to-teams) site pull API. FreePBX pushes **extension + display name only**; admins map emails in the registry UI. The sync app receives only mapped `{extension,email}` rows:
+
+```bash
+EXTENSIONS_URL=https://pbxtoteams.example.com/api/v1/sites/1/extensions
+EXTENSIONS_TOKEN=pull_...
+# optional: refresh email mappings without restart (BLF SUBSCRIBE list is still from startup)
+# EXTENSIONS_REFRESH_SECONDS=300
+```
+
+#### Voicemail.conf (on-box)
+
+Set `VOICEMAIL_CONF` to an Asterisk/FreePBX `voicemail.conf` path. It parses context sections (e.g. `[default]`) for mailbox lines `extension=password,name,email,...`; the third field is email (first address if `|`-separated). `[general]` is skipped.
 
 ### 2. Environment
 
@@ -64,8 +85,11 @@ Copy `.env.example` to `.env` and set:
 | `AZURE_TENANT_ID`     | Azure AD tenant ID                                                                                                                |
 | `AZURE_CLIENT_ID`     | App (client) ID                                                                                                                   |
 | `AZURE_CLIENT_SECRET` | Client secret                                                                                                                     |
-| `EXTENSIONS_JSON`     | Path to extensions file (default: `config/extensions.json`). Ignored when `VOICEMAIL_CONF` is set.                                |
-| `VOICEMAIL_CONF`      | Optional. Path to Asterisk voicemail.conf; when set, extension/email are read from it instead of JSON/CSV.                       |
+| `EXTENSIONS_JSON`     | Path to extensions file (default: `config/extensions.json`). Ignored when `VOICEMAIL_CONF` or `EXTENSIONS_URL` is set.           |
+| `VOICEMAIL_CONF`      | Optional. Path to Asterisk voicemail.conf; highest priority extension source.                                                    |
+| `EXTENSIONS_URL`      | Optional. Central registry URL returning `[{extension,email}]` (e.g. PBX-to-Teams pull API).                                    |
+| `EXTENSIONS_TOKEN`    | Optional. Bearer token for `EXTENSIONS_URL` (site pull token).                                                                  |
+| `EXTENSIONS_REFRESH_SECONDS` | Optional. Re-fetch `EXTENSIONS_URL` every N seconds (`0` = once at start). Email map only; restart for new BLF targets. |
 | `PRESENCE_STATE_JSON` | Path to session ID state file (default: `config/presence-state.json`)                                                             |
 | `SIP_LISTEN`          | Address to bind for NOTIFY (default: `0.0.0.0:5060` when using STUN, else `SIP_CONTACT_IP:5060`)                                  |
 
@@ -116,10 +140,11 @@ The service will:
 ## Project layout
 
 - `cmd/sip-blf-sync/` – main entrypoint and config loading.
+- `internal/extensions/` – load extension→email from JSON, CSV, voicemail.conf, or central `EXTENSIONS_URL`.
 - `internal/sip/` – SIP registration and BLF SUBSCRIBE/NOTIFY (sipgo).
 - `internal/blf/` – BLF NOTIFY body parsing (dialog-info) and state → Graph availability mapping.
 - `internal/graph/` – Azure auth, state file, and Microsoft Graph `setPresence` / `setStatusMessage`.
-- `config/extensions.json` – extension → email mapping (or set `VOICEMAIL_CONF` to an Asterisk voicemail.conf path).
+- `config/extensions.json` – extension → email mapping (or set `VOICEMAIL_CONF` / `EXTENSIONS_URL`).
 - `config/presence-state.json` – optional state file (used for persistence if needed).
 
 ## Versioning
