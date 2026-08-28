@@ -19,7 +19,7 @@ A small service that registers to a SIP endpoint (FreePBX, Asterisk, or any PBX 
 ## How it works
 
 - **SIP client**: Registers to the PBX (From header uses SIP username and server host so the PBX can match the peer) and sends SUBSCRIBE (dialog event package) for each extension in config. Handles 401 digest auth on SUBSCRIBE.
-- **BLF**: On NOTIFY, parses dialog-info XML and maps state (idle / ringing / busy) to Graph availability (Available / Busy).
+- **BLF**: On NOTIFY, parses dialog-info XML and maps state to Graph availability: idle and ringing → Available; busy (answered) → Busy.
 - **Graph**: Uses app-only auth (client credentials). Resolves each extension’s email (UPN) to the user’s object ID (GUID) via `GET /users/{upn}` (cached), then calls `setPresence` with the application ID as `sessionId`. Optionally `setStatusMessage`.
 - **STUN**: When `SIP_CONTACT_IP` is `auto`/`stun`/empty, uses a simple STUN binding request to discover the public IP:port for the Contact header.
 
@@ -137,9 +137,14 @@ The service will:
 3. SUBSCRIBE to BLF (dialog) for each extension (with digest auth if the PBX challenges SUBSCRIBE).
 4. Listen for NOTIFY; on each NOTIFY, parse state, resolve the user’s email to object ID if needed, and call Graph `setPresence` for that user. The application ID is used as `sessionId` for app-only presence.
 
+### Run under supervisord
+
+A sample program config lives at [`deploy/supervisord/teams-sip-blf.ini`](deploy/supervisord/teams-sip-blf.ini). It assumes the binary and `.env` under `/opt/teams-sip-blf/` (cwd matters so relative `config/` paths and `godotenv` load correctly). Copy it into your supervisord conf directory, adjust `user` if needed, then `supervisorctl reread && supervisorctl update`.
+
 ## Project layout
 
 - `cmd/sip-blf-sync/` – main entrypoint and config loading.
+- `deploy/supervisord/` – sample supervisord program unit.
 - `internal/extensions/` – load extension→email from JSON, CSV, voicemail.conf, or central `EXTENSIONS_URL`.
 - `internal/sip/` – SIP registration and BLF SUBSCRIBE/NOTIFY (sipgo).
 - `internal/blf/` – BLF NOTIFY body parsing (dialog-info) and state → Graph availability mapping.

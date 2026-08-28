@@ -9,12 +9,13 @@ const (
 )
 
 // ToGraph maps BLF state to Graph availability and activity.
+// Ringing stays Available so Teams only shows Busy when the line is answered.
 func (s State) ToGraph() (availability, activity string) {
 	switch s {
-	case StateIdle:
-		return GraphAvailabilityAvailable, GraphActivityAvailable
-	case StateRinging, StateBusy:
+	case StateBusy:
 		return GraphAvailabilityBusy, GraphActivityInACall
+	case StateIdle, StateRinging:
+		return GraphAvailabilityAvailable, GraphActivityAvailable
 	default:
 		return GraphAvailabilityAvailable, GraphActivityAvailable
 	}
