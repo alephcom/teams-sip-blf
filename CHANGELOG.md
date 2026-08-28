@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- BLF `ringing` no longer maps to Graph Busy; only `busy` (answered/confirmed) sets Busy / InACall. Ringing keeps Available like idle.
+
 ### Added
 
 - `EXTENSIONS_URL` / `EXTENSIONS_TOKEN`: load mapped `{extension,email}` from a central PBX-to-Teams registry (self-hosted or hosted). Priority: `VOICEMAIL_CONF` > `EXTENSIONS_URL` > `EXTENSIONS_JSON`/CSV.
