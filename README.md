@@ -81,6 +81,7 @@ Copy `.env.example` to `.env` and set:
 | `SIP_USERNAME`        | SIP username for REGISTER                                                                                                         |
 | `SIP_PASSWORD`        | SIP password                                                                                                                      |
 | `SIP_CONTACT_IP`      | Your host IP for the Contact header (must be reachable by the PBX). Use `auto` or `stun` to discover via STUN when behind NAT.    |
+| `SIP_CONTACT_PORT`    | Optional Contact/listen port (default `5060`). Use a unique value per process when running multiple instances on one IP. Ignored when using STUN. |
 | `STUN_SERVERS`        | Comma-separated STUN servers for NAT discovery (default: Google STUN servers). Used when `SIP_CONTACT_IP` is `auto`/`stun`/empty. |
 | `AZURE_TENANT_ID`     | Azure AD tenant ID                                                                                                                |
 | `AZURE_CLIENT_ID`     | App (client) ID                                                                                                                   |
@@ -91,7 +92,7 @@ Copy `.env.example` to `.env` and set:
 | `EXTENSIONS_TOKEN`    | Optional. Bearer token for `EXTENSIONS_URL` (site pull token).                                                                  |
 | `EXTENSIONS_REFRESH_SECONDS` | Optional. Re-fetch `EXTENSIONS_URL` every N seconds (`0` = once at start). Email map only; restart for new BLF targets. |
 | `PRESENCE_STATE_JSON` | Path to session ID state file (default: `config/presence-state.json`)                                                             |
-| `SIP_LISTEN`          | Address to bind for NOTIFY (default: `0.0.0.0:5060` when using STUN, else `SIP_CONTACT_IP:5060`)                                  |
+| `SIP_LISTEN`          | Address to bind for NOTIFY. Default is `0.0.0.0:<port>` when `SIP_CONTACT_PORT` or STUN sets a Contact port; otherwise `SIP_CONTACT_IP:5060`. Keep in sync with `SIP_CONTACT_PORT`. |
 
 
 ### 3. Azure app registration
@@ -103,7 +104,19 @@ Copy `.env.example` to `.env` and set:
 
 ### 4. Behind NAT (STUN)
 
-When the sync service runs behind NAT, set `SIP_CONTACT_IP=auto` (or `stun` or leave empty). The app will use the configured `STUN_SERVERS` to discover your public IP and port and put them in the SIP Contact header so the PBX can send NOTIFYs back. Ensure your router forwards UDP (and TCP if used) port 5060 to the host running the app. `SIP_LISTEN` defaults to `0.0.0.0:5060` in this case so the app binds on all interfaces.
+When the sync service runs behind NAT, set `SIP_CONTACT_IP=auto` (or `stun` or leave empty). The app will use the configured `STUN_SERVERS` to discover your public IP and port and put them in the SIP Contact header so the PBX can send NOTIFYs back. Ensure your router forwards UDP (and TCP if used) the discovered port to the host running the app. `SIP_LISTEN` defaults to `0.0.0.0:<ContactPort>` in this case. `SIP_CONTACT_PORT` is ignored when STUN is used.
+
+### 4a. Multiple instances on one host
+
+Run one process per PBX (separate directory / `.env` each). On a **shared IP**, give each instance a unique port:
+
+```bash
+SIP_CONTACT_IP=10.81.223.208
+SIP_CONTACT_PORT=5071
+# SIP_LISTEN defaults to 0.0.0.0:5071
+```
+
+Open that UDP (or TCP) port from each PBX to the sync host. Each instance still needs its own `SIP_USERNAME` / `SIP_PASSWORD` and extensions file.
 
 ### 5. FreePBX / Asterisk (BLF)
 

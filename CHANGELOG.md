@@ -9,9 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - BLF `ringing` no longer maps to Graph Busy; only `busy` (answered/confirmed) sets Busy / InACall. Ringing keeps Available like idle.
+- Default `SIP_LISTEN` uses `SIP_CONTACT_PORT` (or the STUN-discovered Contact port) instead of always binding `:5060` when a Contact port is set.
 
 ### Added
 
+- `SIP_CONTACT_PORT`: set Contact (and default listen) port for multi-instance deployments on one IP. Ignored when `SIP_CONTACT_IP` uses STUN (`auto`/`stun`/empty).
 - `EXTENSIONS_URL` / `EXTENSIONS_TOKEN`: load mapped `{extension,email}` from a central PBX-to-Teams registry (self-hosted or hosted). Priority: `VOICEMAIL_CONF` > `EXTENSIONS_URL` > `EXTENSIONS_JSON`/CSV.
 - Optional `EXTENSIONS_REFRESH_SECONDS` to refresh the in-memory email map from the URL without restarting (BLF subscriptions still use the initial extension list).
 - Shared `internal/extensions` package for JSON, CSV, voicemail.conf, and URL loaders.

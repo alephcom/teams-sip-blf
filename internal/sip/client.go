@@ -250,6 +250,7 @@ func (c *Client) subscribeOne(ctx context.Context, extension string) error {
 }
 
 // contactAddr returns the Contact header value (sip:user@host or sip:user@host:port).
+// Port is omitted only when unset or the SIP default 5060.
 func (c *Client) contactAddr() string {
 	if c.cfg.ContactPort > 0 && c.cfg.ContactPort != 5060 {
 		return fmt.Sprintf("<sip:%s@%s:%d>", c.cfg.Username, c.cfg.ContactIP, c.cfg.ContactPort)

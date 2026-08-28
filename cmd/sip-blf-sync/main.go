@@ -107,6 +107,12 @@ func main() {
 			stunServers = append(stunServers, s)
 		}
 	}
+	contactPortEnv, err := parseContactPort(getEnv("SIP_CONTACT_PORT", ""))
+	if err != nil {
+		slog.Error("SIP_CONTACT_PORT", "error", err)
+		os.Exit(1)
+	}
+
 	sipCfg := sip.Config{
 		Server:      strings.TrimSpace(getEnv("SIP_SERVER", "127.0.0.1:5060")),
 		Transport:   strings.TrimSpace(getEnv("SIP_TRANSPORT", "udp")),
@@ -116,6 +122,7 @@ func main() {
 		STUNServers: stunServers,
 		UserAgent:   "teams-freepbx-blf/1.0",
 	}
+	useSTUN := sip.IsContactSentinel(sipCfg.ContactIP)
 
 	if err := sip.ResolveContactIfNeeded(&sipCfg, slog.Default()); err != nil {
 		slog.Error("STUN discovery failed", "error", err)
@@ -124,6 +131,15 @@ func main() {
 	if sip.IsContactSentinel(sipCfg.ContactIP) {
 		slog.Error("SIP_CONTACT_IP is auto/stun/empty but STUN did not set a valid address; check STUN_SERVERS and network")
 		os.Exit(1)
+	}
+
+	if contactPortEnv > 0 {
+		if useSTUN {
+			slog.Warn("SIP_CONTACT_PORT ignored when using STUN; ContactPort comes from STUN discovery",
+				"sip_contact_port", contactPortEnv, "stun_contact_port", sipCfg.ContactPort)
+		} else {
+			sipCfg.ContactPort = contactPortEnv
+		}
 	}
 
 	sipClient, err := sip.NewClient(sipCfg, extList, onBLF)
@@ -153,8 +169,13 @@ func main() {
 		)
 	}
 
+	listenAddr := strings.TrimSpace(getEnv("SIP_LISTEN", defaultListenAddr(sipCfg)))
+	if listenPort, err := listenPortFromAddr(listenAddr); err == nil && sipCfg.ContactPort > 0 && listenPort != sipCfg.ContactPort {
+		slog.Warn("SIP_LISTEN port differs from ContactPort; PBX NOTIFYs use Contact",
+			"listen", listenAddr, "contact_port", sipCfg.ContactPort)
+	}
+
 	go func() {
-		listenAddr := strings.TrimSpace(getEnv("SIP_LISTEN", defaultListenAddr(sipCfg)))
 		if err := sipClient.ListenAndServe(ctx, sipCfg.Transport, listenAddr); err != nil && ctx.Err() == nil {
 			slog.Error("sip server", "error", err)
 		}
@@ -170,7 +191,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	slog.Info("sip-blf-sync running", "extensions", len(extList))
+	slog.Info("sip-blf-sync running",
+		"extensions", len(extList),
+		"contact_ip", sipCfg.ContactIP,
+		"contact_port", contactListenPort(sipCfg),
+		"listen", listenAddr,
+	)
 	<-ctx.Done()
 	slog.Info("shutting down")
 }
