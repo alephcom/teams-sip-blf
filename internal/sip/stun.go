@@ -73,7 +73,9 @@ func IsContactSentinel(contactIP string) bool {
 }
 
 // ResolveContactIfNeeded runs STUN discovery when cfg.ContactIP is empty, "auto", or "stun",
-// and sets cfg.ContactIP and cfg.ContactPort to the public address. Returns nil if no resolution needed or success.
+// and sets cfg.ContactIP to the public IP. The mapped port is not stored: it belongs to the
+// ephemeral STUN socket (closed after discovery), not the SIP listener. Returns nil if no
+// resolution is needed or on success.
 func ResolveContactIfNeeded(cfg *Config, log *slog.Logger) error {
 	if !IsContactSentinel(cfg.ContactIP) {
 		return nil
@@ -81,12 +83,11 @@ func ResolveContactIfNeeded(cfg *Config, log *slog.Logger) error {
 	if len(cfg.STUNServers) == 0 {
 		return fmt.Errorf("STUN requested but no STUN_SERVERS configured")
 	}
-	ip, port, err := DiscoverPublicAddress(cfg.STUNServers, log)
+	ip, _, err := DiscoverPublicAddress(cfg.STUNServers, log)
 	if err != nil {
 		return err
 	}
 	cfg.ContactIP = ip
-	cfg.ContactPort = port
 	return nil
 }
 

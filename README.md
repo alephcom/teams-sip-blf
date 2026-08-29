@@ -92,7 +92,7 @@ Copy `.env.example` to `.env` and set:
 | `EXTENSIONS_TOKEN`    | Optional. Bearer token for `EXTENSIONS_URL` (site pull token).                                                                  |
 | `EXTENSIONS_REFRESH_SECONDS` | Optional. Re-fetch `EXTENSIONS_URL` every N seconds (`0` = once at start). Email map only; restart for new BLF targets. |
 | `PRESENCE_STATE_JSON` | Path to session ID state file (default: `config/presence-state.json`)                                                             |
-| `SIP_LISTEN`          | Address to bind for NOTIFY. Default is `0.0.0.0:<port>` when `SIP_CONTACT_PORT` or STUN sets a Contact port; otherwise `SIP_CONTACT_IP:5060`. Keep in sync with `SIP_CONTACT_PORT`. |
+| `SIP_LISTEN`          | Address to bind for NOTIFY. Default is `0.0.0.0:<SIP_CONTACT_PORT>` when that env is set, `0.0.0.0:5060` when using STUN, otherwise `SIP_CONTACT_IP:5060`. |
 
 
 ### 3. Azure app registration
@@ -104,7 +104,7 @@ Copy `.env.example` to `.env` and set:
 
 ### 4. Behind NAT (STUN)
 
-When the sync service runs behind NAT, set `SIP_CONTACT_IP=auto` (or `stun` or leave empty). The app will use the configured `STUN_SERVERS` to discover your public IP and port and put them in the SIP Contact header so the PBX can send NOTIFYs back. Ensure your router forwards UDP (and TCP if used) the discovered port to the host running the app. `SIP_LISTEN` defaults to `0.0.0.0:<ContactPort>` in this case. `SIP_CONTACT_PORT` is ignored when STUN is used.
+When the sync service runs behind NAT, set `SIP_CONTACT_IP=auto` (or `stun` or leave empty). The app will use the configured `STUN_SERVERS` to discover your public IP and put it in the SIP Contact header so the PBX can send NOTIFYs back. The STUN-mapped port is not used: it is the public mapping of a short-lived discovery socket, not a stable local port. Ensure your router forwards UDP (and TCP if used) port 5060 to the host running the app. `SIP_LISTEN` defaults to `0.0.0.0:5060` in this case. `SIP_CONTACT_PORT` is ignored when STUN is used.
 
 ### 4a. Multiple instances on one host
 

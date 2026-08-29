@@ -135,8 +135,8 @@ func main() {
 
 	if contactPortEnv > 0 {
 		if useSTUN {
-			slog.Warn("SIP_CONTACT_PORT ignored when using STUN; ContactPort comes from STUN discovery",
-				"sip_contact_port", contactPortEnv, "stun_contact_port", sipCfg.ContactPort)
+			slog.Warn("SIP_CONTACT_PORT ignored when using STUN; listen and Contact stay on 5060",
+				"sip_contact_port", contactPortEnv)
 		} else {
 			sipCfg.ContactPort = contactPortEnv
 		}
@@ -169,7 +169,7 @@ func main() {
 		)
 	}
 
-	listenAddr := strings.TrimSpace(getEnv("SIP_LISTEN", defaultListenAddr(sipCfg)))
+	listenAddr := strings.TrimSpace(getEnv("SIP_LISTEN", defaultListenAddr(sipCfg, useSTUN)))
 	if listenPort, err := listenPortFromAddr(listenAddr); err == nil && sipCfg.ContactPort > 0 && listenPort != sipCfg.ContactPort {
 		slog.Warn("SIP_LISTEN port differs from ContactPort; PBX NOTIFYs use Contact",
 			"listen", listenAddr, "contact_port", sipCfg.ContactPort)

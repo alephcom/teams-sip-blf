@@ -42,9 +42,10 @@ func TestParseContactPort(t *testing.T) {
 func TestDefaultListenAddr(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name string
-		cfg  sip.Config
-		want string
+		name     string
+		cfg      sip.Config
+		stunUsed bool
+		want     string
 	}{
 		{
 			name: "plain contact ip defaults to 5060 on that ip",
@@ -66,11 +67,17 @@ func TestDefaultListenAddr(t *testing.T) {
 			cfg:  sip.Config{ContactIP: "auto"},
 			want: "0.0.0.0:5060",
 		},
+		{
+			name:     "stun mapped port is not used as a local bind port",
+			cfg:      sip.Config{ContactIP: "203.0.113.10", ContactPort: 49152},
+			stunUsed: true,
+			want:     "0.0.0.0:5060",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := defaultListenAddr(tc.cfg); got != tc.want {
+			if got := defaultListenAddr(tc.cfg, tc.stunUsed); got != tc.want {
 				t.Fatalf("defaultListenAddr()=%q, want %q", got, tc.want)
 			}
 		})

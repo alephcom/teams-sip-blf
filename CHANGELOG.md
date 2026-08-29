@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - BLF `ringing` no longer maps to Graph Busy; only `busy` (answered/confirmed) sets Busy / InACall. Ringing keeps Available like idle.
-- Default `SIP_LISTEN` uses `SIP_CONTACT_PORT` (or the STUN-discovered Contact port) instead of always binding `:5060` when a Contact port is set.
+- Default `SIP_LISTEN` uses `SIP_CONTACT_PORT` when set. STUN still binds `:5060` (the STUN-mapped port is not a local listen port).
 
 ### Added
 

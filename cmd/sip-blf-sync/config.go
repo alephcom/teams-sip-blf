@@ -42,11 +42,15 @@ func contactListenPort(cfg sip.Config) int {
 }
 
 // defaultListenAddr returns the default bind address for the SIP server.
-// Uses ContactPort when set; otherwise 5060. Binds 0.0.0.0 when ContactIP was a
-// STUN sentinel or ContactPort is set (multi-instance / NAT-friendly).
-func defaultListenAddr(cfg sip.Config) string {
-	port := contactListenPort(cfg)
-	if cfg.ContactPort != 0 || sip.IsContactSentinel(cfg.ContactIP) {
+// SIP_CONTACT_PORT is a local listen/advertise port. A STUN-mapped ContactPort is
+// the public NAT mapping of a discarded ephemeral socket, not a local bind port,
+// so STUN always defaults to 0.0.0.0:5060.
+func defaultListenAddr(cfg sip.Config, stunUsed bool) string {
+	port := 5060
+	if !stunUsed && cfg.ContactPort > 0 {
+		port = cfg.ContactPort
+	}
+	if stunUsed || cfg.ContactPort != 0 || sip.IsContactSentinel(cfg.ContactIP) {
 		return net.JoinHostPort("0.0.0.0", strconv.Itoa(port))
 	}
 	return net.JoinHostPort(cfg.ContactIP, strconv.Itoa(port))

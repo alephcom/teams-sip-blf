@@ -22,7 +22,7 @@ type Config struct {
 	Username    string
 	Password    string
 	ContactIP   string   // our IP for Contact header; use "auto" or leave empty for STUN discovery
-	ContactPort int      // port for Contact (0 = 5060 or omit); set by STUN when behind NAT
+	ContactPort int      // local port for Contact (0 = 5060 or omit); not a STUN-mapped port
 	STUNServers []string // STUN servers for NAT discovery (e.g. stun.l.google.com)
 	UserAgent   string
 }
@@ -52,7 +52,7 @@ func serverHost(server string) string {
 }
 
 // NewClient creates a SIP client. Call Register then Subscribe; run the server to handle NOTIFY.
-// cfg.ContactIP and cfg.ContactPort should already be set (e.g. from STUN when behind NAT).
+// cfg.ContactIP should already be set (e.g. public IP from STUN when behind NAT).
 // The UA identity (From header) is set to cfg.Username@serverHost so the PBX can match the registered peer.
 func NewClient(cfg Config, extensions []string, onBLF BLFHandler) (*Client, error) {
 	host := serverHost(cfg.Server)
