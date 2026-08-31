@@ -6,21 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.0.5] - 2026-08-31
-
-### Changed
-
-- BLF `ringing` no longer maps to Graph Busy; only `busy` (answered/confirmed) sets Busy / InACall. Ringing keeps Available like idle.
-- Default `SIP_LISTEN` uses `SIP_CONTACT_PORT` when set. STUN still binds `:5060` (the STUN-mapped port is not a local listen port).
+## [0.0.7] - 2026-08-31
 
 ### Added
 
 - `LOG_LEVEL` env var (`debug`/`info`/`warn`/`error`): Info logs register/subscribe and busy/idle presence updates; Debug also logs every BLF phone state including ringing.
 - SIP session keepalive: re-REGISTER and re-SUBSCRIBE at ~80% of granted `Expires`; exit after three consecutive refresh failures so supervisord can restart.
+
+## [0.0.6] - 2026-08-28
+
+### Added
+
 - `SIP_CONTACT_PORT`: set Contact (and default listen) port for multi-instance deployments on one IP. Ignored when `SIP_CONTACT_IP` uses STUN (`auto`/`stun`/empty).
+
+### Changed
+
+- Default `SIP_LISTEN` uses `SIP_CONTACT_PORT` when set. STUN still binds `:5060` (the STUN-mapped port is not a local listen port).
+
+## [0.0.5] - 2026-08-28
+
+### Changed
+
+- BLF `ringing` no longer maps to Graph Busy; only `busy` (answered/confirmed) sets Busy / InACall. Ringing keeps Available like idle.
+
+### Added
+
 - `EXTENSIONS_URL` / `EXTENSIONS_TOKEN`: load mapped `{extension,email}` from a central PBX-to-Teams registry (self-hosted or hosted). Priority: `VOICEMAIL_CONF` > `EXTENSIONS_URL` > `EXTENSIONS_JSON`/CSV.
 - Optional `EXTENSIONS_REFRESH_SECONDS` to refresh the in-memory email map from the URL without restarting (BLF subscriptions still use the initial extension list).
 - Shared `internal/extensions` package for JSON, CSV, voicemail.conf, and URL loaders.
+- Sample supervisord unit for deploying at `/opt/teams-sip-blf`.
 
 ## [0.0.4] - 2025-02-28
 

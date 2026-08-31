@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Go 1.21+](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://go.dev/)
 
-**Version:** 0.0.5
+**Version:** 0.0.7
 
 A small service that registers to a SIP endpoint (FreePBX, Asterisk, or any PBX with BLF support), subscribes to BLF (Busy Lamp Field) for a list of extensions, and updates each user's **Microsoft Teams presence** in **Microsoft Graph** when their line state changes. Built for teams using both a SIP PBX and Microsoft 365.
 
