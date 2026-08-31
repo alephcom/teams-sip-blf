@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/microsoft/kiota-abstractions-go/serialization"
@@ -135,8 +136,16 @@ func parseISODuration(s string) (*serialization.ISODuration, error) {
 	return serialization.ParseISODuration(s)
 }
 
-// SetStatusMessage sets the user's presence status message (optional).
-func (c *Client) SetStatusMessage(ctx context.Context, userID, message string) error {
+// SetStatusMessage sets the user's presence status message.
+// userID is the user's email (userPrincipalName); it is resolved to a Graph object ID like SetPresence.
+// When expiry is non-nil, statusMessage.expiryDateTime is set using the given timeZone (e.g. "UTC").
+func (c *Client) SetStatusMessage(ctx context.Context, userID, message string, expiry *time.Time, timeZone string) error {
+	objectID, err := c.resolveUserID(ctx, userID)
+	if err != nil {
+		c.log.Error("resolve user ID failed", "user", userID, "error", err)
+		return err
+	}
+
 	msg := models.NewPresenceStatusMessage()
 	itemBody := models.NewItemBody()
 	content := message
@@ -144,14 +153,34 @@ func (c *Client) SetStatusMessage(ctx context.Context, userID, message string) e
 	itemBody.SetContent(&content)
 	itemBody.SetContentType(&contentType)
 	msg.SetMessage(itemBody)
+
+	if expiry != nil {
+		if timeZone == "" {
+			timeZone = "UTC"
+		}
+		dtz := models.NewDateTimeTimeZone()
+		loc := time.UTC
+		if timeZone != "UTC" {
+			if l, err := time.LoadLocation(timeZone); err == nil {
+				loc = l
+			}
+		}
+		dateTime := expiry.In(loc).Format("2006-01-02T15:04:05.0000000")
+		dtz.SetDateTime(&dateTime)
+		tz := timeZone
+		dtz.SetTimeZone(&tz)
+		msg.SetExpiryDateTime(dtz)
+	}
+
 	body := users.NewItemPresenceSetStatusMessagePostRequestBody()
 	body.SetStatusMessage(msg)
 
 	reqConfig := &users.ItemPresenceSetStatusMessageRequestBuilderPostRequestConfiguration{}
-	err := c.graph.Users().ByUserId(userID).Presence().SetStatusMessage().Post(ctx, body, reqConfig)
+	err = c.graph.Users().ByUserId(objectID).Presence().SetStatusMessage().Post(ctx, body, reqConfig)
 	if err != nil {
-		c.log.Error("setStatusMessage failed", "user", userID, "error", err)
+		c.log.Error("setStatusMessage failed", "user", userID, "error", err, "error_chain", errorChain(err))
 		return err
 	}
+	c.log.Debug("setStatusMessage ok", "user", userID, "message_len", len(message), "has_expiry", expiry != nil)
 	return nil
 }

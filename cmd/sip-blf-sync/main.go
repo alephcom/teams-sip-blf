@@ -33,6 +33,20 @@ func main() {
 	extensionsToken := strings.TrimSpace(getEnv("EXTENSIONS_TOKEN", ""))
 	refreshSec, _ := strconv.Atoi(getEnv("EXTENSIONS_REFRESH_SECONDS", "0"))
 	statePath := getEnv("PRESENCE_STATE_JSON", "config/presence-state.json")
+	statusMessage := strings.TrimSpace(getEnv("STATUS_MESSAGE", ""))
+	statusTZ := strings.TrimSpace(getEnv("STATUS_MESSAGE_TIMEZONE", "UTC"))
+	if statusTZ == "" {
+		statusTZ = "UTC"
+	}
+	var statusExpiryDur *time.Duration
+	if expiryRaw := strings.TrimSpace(getEnv("STATUS_MESSAGE_EXPIRY", "")); expiryRaw != "" {
+		d, err := time.ParseDuration(expiryRaw)
+		if err != nil {
+			slog.Error("STATUS_MESSAGE_EXPIRY", "error", err, "value", expiryRaw)
+			os.Exit(1)
+		}
+		statusExpiryDur = &d
+	}
 
 	var list []extensions.Entry
 	var loadedFrom string
@@ -101,6 +115,16 @@ func main() {
 		if err := graphClient.SetPresence(ctx, email, extension, availability, activity); err != nil {
 			slog.Error("set presence", "extension", extension, "email", email, "error", err)
 			return
+		}
+		if statusMessage != "" {
+			var expiry *time.Time
+			if statusExpiryDur != nil {
+				t := time.Now().Add(*statusExpiryDur)
+				expiry = &t
+			}
+			if err := graphClient.SetStatusMessage(ctx, email, statusMessage, expiry, statusTZ); err != nil {
+				slog.Error("set status message", "extension", extension, "email", email, "error", err)
+			}
 		}
 		switch state {
 		case blf.StateBusy, blf.StateIdle:

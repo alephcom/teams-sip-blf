@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-08-31
+
+### Added
+
+- Optional Teams status message sync via `STATUS_MESSAGE`, with optional expiry (`STATUS_MESSAGE_EXPIRY` Go duration) and timezone (`STATUS_MESSAGE_TIMEZONE`, default `UTC`). After each successful `setPresence`, calls Graph `setStatusMessage` when configured.
+- `SetStatusMessage` resolves UPN to object ID (same as `SetPresence`) and supports Graph `expiryDateTime`.
+
 ## [0.0.7] - 2026-08-31
 
 ### Added
