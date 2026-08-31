@@ -24,6 +24,9 @@ func main() {
 	_ = godotenv.Load(".env.local")
 	_ = godotenv.Load()
 
+	level := parseLogLevel(getEnv("LOG_LEVEL", "info"))
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+
 	extensionsPath := getEnv("EXTENSIONS_JSON", "config/extensions.json")
 	voicemailConf := strings.TrimSpace(getEnv("VOICEMAIL_CONF", ""))
 	extensionsURL := strings.TrimSpace(getEnv("EXTENSIONS_URL", ""))
@@ -91,13 +94,18 @@ func main() {
 			slog.Warn("BLF for unknown extension", "extension", extension)
 			return
 		}
+		slog.Debug("BLF state", "extension", extension, "state", state)
+
 		availability, activity := state.ToGraph()
 		ctx := context.Background()
 		if err := graphClient.SetPresence(ctx, email, extension, availability, activity); err != nil {
 			slog.Error("set presence", "extension", extension, "email", email, "error", err)
 			return
 		}
-		slog.Info("presence updated", "extension", extension, "state", state, "availability", availability)
+		switch state {
+		case blf.StateBusy, blf.StateIdle:
+			slog.Info("presence updated", "extension", extension, "state", state, "availability", availability)
+		}
 	}
 
 	stunServersRaw := strings.Split(getEnv("STUN_SERVERS", "stun.l.google.com,stun2.l.google.com,stun3.l.google.com,stun4.l.google.com"), ",")
@@ -181,12 +189,14 @@ func main() {
 		}
 	}()
 
-	if err := sipClient.Register(ctx); err != nil {
+	regExpires, err := sipClient.Register(ctx)
+	if err != nil {
 		slog.Error("register", "error", err)
 		os.Exit(1)
 	}
 
-	if err := sipClient.Subscribe(ctx); err != nil {
+	subExpires, err := sipClient.Subscribe(ctx)
+	if err != nil {
 		slog.Error("subscribe", "error", err)
 		os.Exit(1)
 	}
@@ -196,7 +206,71 @@ func main() {
 		"contact_ip", sipCfg.ContactIP,
 		"contact_port", contactListenPort(sipCfg),
 		"listen", listenAddr,
+		"register_expires", regExpires,
+		"subscribe_expires", subExpires,
 	)
+
+	go maintainSIPSession(ctx, sipClient, regExpires, subExpires)
+
 	<-ctx.Done()
 	slog.Info("shutting down")
+}
+
+const sipRefreshFailLimit = 3
+
+// maintainSIPSession re-REGISTERs and re-SUBSCRIBEs before granted Expires.
+// After sipRefreshFailLimit consecutive failures of either path, exits so supervisord can restart.
+func maintainSIPSession(ctx context.Context, client *sip.Client, regExpires, subExpires time.Duration) {
+	regTimer := time.NewTimer(sip.RefreshDelay(regExpires))
+	subTimer := time.NewTimer(sip.RefreshDelay(subExpires))
+	defer regTimer.Stop()
+	defer subTimer.Stop()
+
+	regFails, subFails := 0, 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-regTimer.C:
+			expires, err := client.Register(ctx)
+			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				regFails++
+				slog.Error("re-register failed", "error", err, "consecutive_failures", regFails)
+				if regFails >= sipRefreshFailLimit {
+					slog.Error("re-register failed too many times; exiting for restart", "limit", sipRefreshFailLimit)
+					os.Exit(1)
+				}
+				regTimer.Reset(time.Minute)
+				continue
+			}
+			regFails = 0
+			regExpires = expires
+			delay := sip.RefreshDelay(regExpires)
+			slog.Info("re-registered", "expires", regExpires, "next_refresh", delay)
+			regTimer.Reset(delay)
+		case <-subTimer.C:
+			expires, err := client.Subscribe(ctx)
+			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				subFails++
+				slog.Error("re-subscribe failed", "error", err, "consecutive_failures", subFails)
+				if subFails >= sipRefreshFailLimit {
+					slog.Error("re-subscribe failed too many times; exiting for restart", "limit", sipRefreshFailLimit)
+					os.Exit(1)
+				}
+				subTimer.Reset(time.Minute)
+				continue
+			}
+			subFails = 0
+			subExpires = expires
+			delay := sip.RefreshDelay(subExpires)
+			slog.Info("re-subscribed", "expires", subExpires, "next_refresh", delay)
+			subTimer.Reset(delay)
+		}
+	}
 }

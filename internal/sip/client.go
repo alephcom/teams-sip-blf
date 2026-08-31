@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
@@ -103,35 +104,40 @@ func (c *Client) ListenAndServe(ctx context.Context, network, addr string) error
 }
 
 // Register sends REGISTER and handles 401 with digest auth.
-func (c *Client) Register(ctx context.Context) error {
+// Returns the granted registration lifetime (for scheduling refresh).
+func (c *Client) Register(ctx context.Context) (time.Duration, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	recipient := sip.Uri{}
 	parseURI := fmt.Sprintf("sip:%s@%s", c.cfg.Username, c.cfg.Server)
 	if err := sip.ParseUri(parseURI, &recipient); err != nil {
-		return err
+		return 0, err
 	}
 	req := sip.NewRequest(sip.REGISTER, recipient)
 	req.AppendHeader(sip.NewHeader("Contact", c.contactAddr()))
+	req.AppendHeader(sip.NewHeader("Expires", "3600"))
 	req.SetTransport(strings.ToUpper(c.cfg.Transport))
 
 	tx, err := c.client.TransactionRequest(ctx, req, sipgo.ClientRequestRegisterBuild)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tx.Terminate()
 
 	res, err := c.getResponse(tx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	if res.StatusCode == 401 {
 		wwwAuth := res.GetHeader("WWW-Authenticate")
 		if wwwAuth == nil {
-			return fmt.Errorf("401 without WWW-Authenticate")
+			return 0, fmt.Errorf("401 without WWW-Authenticate")
 		}
 		chal, err := digest.ParseChallenge(wwwAuth.Value())
 		if err != nil {
-			return err
+			return 0, err
 		}
 		cred, err := digest.Digest(chal, digest.Options{
 			Method:   req.Method.String(),
@@ -140,35 +146,43 @@ func (c *Client) Register(ctx context.Context) error {
 			Password: c.cfg.Password,
 		})
 		if err != nil {
-			return err
+			return 0, err
 		}
 		newReq := req.Clone()
 		newReq.RemoveHeader("Via")
 		newReq.AppendHeader(sip.NewHeader("Authorization", cred.String()))
 		tx2, err := c.client.TransactionRequest(ctx, newReq, sipgo.ClientRequestIncreaseCSEQ, sipgo.ClientRequestAddVia)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		defer tx2.Terminate()
 		res, err = c.getResponse(tx2)
 		if err != nil {
-			return err
+			return 0, err
 		}
 	}
 
 	if res.StatusCode != 200 && res.StatusCode != 202 {
-		return fmt.Errorf("register failed: %d", res.StatusCode)
+		return 0, fmt.Errorf("register failed: %d", res.StatusCode)
 	}
-	c.log.Info("registered", "status", res.StatusCode)
-	return nil
+	expires := parseExpires(res, defaultExpires)
+	c.log.Info("registered", "status", res.StatusCode, "expires", expires)
+	return expires, nil
 }
 
 // Subscribe sends SUBSCRIBE for the dialog event package for each extension.
 // Continues on 404 so other extensions can still be subscribed; returns error only if all fail.
-func (c *Client) Subscribe(ctx context.Context) error {
+// Returns the minimum granted subscription lifetime among successful subscriptions.
+func (c *Client) Subscribe(ctx context.Context) (time.Duration, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	var failed []string
+	var minExpiresGranted time.Duration
+	okCount := 0
 	for _, ext := range c.extensions {
-		if err := c.subscribeOne(ctx, ext); err != nil {
+		expires, err := c.subscribeOne(ctx, ext)
+		if err != nil {
 			if strings.Contains(err.Error(), "404") {
 				c.log.Warn("subscribe 404 (extension may lack BLF hint on PBX)", "extension", ext, "hint", "See README or FreePBX dialplan hints / res_pjsip allow_subscribe")
 			} else {
@@ -177,22 +191,26 @@ func (c *Client) Subscribe(ctx context.Context) error {
 			failed = append(failed, ext)
 			continue
 		}
-		c.log.Info("subscribed to BLF", "extension", ext)
+		okCount++
+		if minExpiresGranted == 0 || expires < minExpiresGranted {
+			minExpiresGranted = expires
+		}
+		c.log.Info("subscribed to BLF", "extension", ext, "expires", expires)
 	}
-	if len(failed) == len(c.extensions) {
-		return fmt.Errorf("all subscriptions failed (extensions: %v); check PBX dialplan hints and res_pjsip allow_subscribe", failed)
+	if okCount == 0 {
+		return 0, fmt.Errorf("all subscriptions failed (extensions: %v); check PBX dialplan hints and res_pjsip allow_subscribe", failed)
 	}
 	if len(failed) > 0 {
 		c.log.Warn("some extensions could not be subscribed", "failed", failed)
 	}
-	return nil
+	return minExpiresGranted, nil
 }
 
-func (c *Client) subscribeOne(ctx context.Context, extension string) error {
+func (c *Client) subscribeOne(ctx context.Context, extension string) (time.Duration, error) {
 	recipient := sip.Uri{}
 	parseURI := fmt.Sprintf("sip:%s@%s", extension, c.cfg.Server)
 	if err := sip.ParseUri(parseURI, &recipient); err != nil {
-		return err
+		return 0, err
 	}
 	req := sip.NewRequest(sip.SUBSCRIBE, recipient)
 	req.AppendHeader(sip.NewHeader("Event", "dialog"))
@@ -202,23 +220,23 @@ func (c *Client) subscribeOne(ctx context.Context, extension string) error {
 
 	tx, err := c.client.TransactionRequest(ctx, req, sipgo.ClientRequestBuild, sipgo.ClientRequestAddVia)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tx.Terminate()
 
 	res, err := c.getResponse(tx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	if res.StatusCode == 401 {
 		wwwAuth := res.GetHeader("WWW-Authenticate")
 		if wwwAuth == nil {
-			return fmt.Errorf("subscribe %s: 401 without WWW-Authenticate", extension)
+			return 0, fmt.Errorf("subscribe %s: 401 without WWW-Authenticate", extension)
 		}
 		chal, err := digest.ParseChallenge(wwwAuth.Value())
 		if err != nil {
-			return fmt.Errorf("subscribe %s: parse challenge: %w", extension, err)
+			return 0, fmt.Errorf("subscribe %s: parse challenge: %w", extension, err)
 		}
 		cred, err := digest.Digest(chal, digest.Options{
 			Method:   req.Method.String(),
@@ -227,26 +245,26 @@ func (c *Client) subscribeOne(ctx context.Context, extension string) error {
 			Password: c.cfg.Password,
 		})
 		if err != nil {
-			return fmt.Errorf("subscribe %s: digest: %w", extension, err)
+			return 0, fmt.Errorf("subscribe %s: digest: %w", extension, err)
 		}
 		newReq := req.Clone()
 		newReq.RemoveHeader("Via")
 		newReq.AppendHeader(sip.NewHeader("Authorization", cred.String()))
 		tx2, err := c.client.TransactionRequest(ctx, newReq, sipgo.ClientRequestIncreaseCSEQ, sipgo.ClientRequestAddVia)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		defer tx2.Terminate()
 		res, err = c.getResponse(tx2)
 		if err != nil {
-			return err
+			return 0, err
 		}
 	}
 
 	if res.StatusCode != 200 && res.StatusCode != 202 {
-		return fmt.Errorf("subscribe %s: %d", extension, res.StatusCode)
+		return 0, fmt.Errorf("subscribe %s: %d", extension, res.StatusCode)
 	}
-	return nil
+	return parseExpires(res, defaultExpires), nil
 }
 
 // contactAddr returns the Contact header value (sip:user@host or sip:user@host:port).

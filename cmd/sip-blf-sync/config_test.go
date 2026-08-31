@@ -1,10 +1,35 @@
 package main
 
 import (
+	"log/slog"
 	"testing"
 
 	"github.com/darrenwiebe/teams_freepbx/internal/sip"
 )
+
+func TestParseLogLevel(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in   string
+		want slog.Level
+	}{
+		{"debug", slog.LevelDebug},
+		{"DEBUG", slog.LevelDebug},
+		{"info", slog.LevelInfo},
+		{"INFO", slog.LevelInfo},
+		{"warn", slog.LevelWarn},
+		{"warning", slog.LevelWarn},
+		{"error", slog.LevelError},
+		{"", slog.LevelInfo},
+		{"  ", slog.LevelInfo},
+		{"garbage", slog.LevelInfo},
+	}
+	for _, tc := range cases {
+		if got := parseLogLevel(tc.in); got != tc.want {
+			t.Fatalf("parseLogLevel(%q)=%v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
 
 func TestParseContactPort(t *testing.T) {
 	t.Parallel()

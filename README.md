@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Go 1.21+](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://go.dev/)
 
-**Version:** 0.0.4
+**Version:** 0.0.5
 
 A small service that registers to a SIP endpoint (FreePBX, Asterisk, or any PBX with BLF support), subscribes to BLF (Busy Lamp Field) for a list of extensions, and updates each user's **Microsoft Teams presence** in **Microsoft Graph** when their line state changes. Built for teams using both a SIP PBX and Microsoft 365.
 
@@ -19,6 +19,7 @@ A small service that registers to a SIP endpoint (FreePBX, Asterisk, or any PBX 
 ## How it works
 
 - **SIP client**: Registers to the PBX (From header uses SIP username and server host so the PBX can match the peer) and sends SUBSCRIBE (dialog event package) for each extension in config. Handles 401 digest auth on SUBSCRIBE.
+- **SIP keepalive**: Re-REGISTERs and re-SUBSCRIBEs at ~80% of the granted `Expires` lifetime. After three consecutive refresh failures, the process exits so supervisord (or similar) can restart it.
 - **BLF**: On NOTIFY, parses dialog-info XML and maps state to Graph availability: idle and ringing → Available; busy (answered) → Busy.
 - **Graph**: Uses app-only auth (client credentials). Resolves each extension’s email (UPN) to the user’s object ID (GUID) via `GET /users/{upn}` (cached), then calls `setPresence` with the application ID as `sessionId`. Optionally `setStatusMessage`.
 - **STUN**: When `SIP_CONTACT_IP` is `auto`/`stun`/empty, uses a simple STUN binding request to discover the public IP:port for the Contact header.
@@ -76,6 +77,7 @@ Copy `.env.example` to `.env` and set:
 
 | Variable              | Description                                                                                                                       |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `LOG_LEVEL`           | Log verbosity: `debug`, `info`, `warn`, or `error` (default `info`). Debug includes every BLF state (e.g. ringing); info logs register/subscribe and busy/idle presence updates. |
 | `SIP_SERVER`          | PBX host:port (e.g. `192.168.1.1:5060`)                                                                                           |
 | `SIP_TRANSPORT`       | `udp` or `tcp`                                                                                                                    |
 | `SIP_USERNAME`        | SIP username for REGISTER                                                                                                         |
@@ -148,7 +150,8 @@ The service will:
 1. Load extensions (and optional state file).
 2. Register to the SIP server (with digest auth if challenged).
 3. SUBSCRIBE to BLF (dialog) for each extension (with digest auth if the PBX challenges SUBSCRIBE).
-4. Listen for NOTIFY; on each NOTIFY, parse state, resolve the user’s email to object ID if needed, and call Graph `setPresence` for that user. The application ID is used as `sessionId` for app-only presence.
+4. Refresh REGISTER and SUBSCRIBE before the granted `Expires` timers elapse; exit after repeated refresh failures so a process manager can restart.
+5. Listen for NOTIFY; on each NOTIFY, parse state, resolve the user’s email to object ID if needed, and call Graph `setPresence` for that user. The application ID is used as `sessionId` for app-only presence.
 
 ### Run under supervisord
 
@@ -159,7 +162,7 @@ A sample program config lives at [`deploy/supervisord/teams-sip-blf.ini`](deploy
 - `cmd/sip-blf-sync/` – main entrypoint and config loading.
 - `deploy/supervisord/` – sample supervisord program unit.
 - `internal/extensions/` – load extension→email from JSON, CSV, voicemail.conf, or central `EXTENSIONS_URL`.
-- `internal/sip/` – SIP registration and BLF SUBSCRIBE/NOTIFY (sipgo).
+- `internal/sip/` – SIP registration, BLF SUBSCRIBE/NOTIFY (sipgo), and Expires-based keepalive helpers.
 - `internal/blf/` – BLF NOTIFY body parsing (dialog-info) and state → Graph availability mapping.
 - `internal/graph/` – Azure auth, state file, and Microsoft Graph `setPresence` / `setStatusMessage`.
 - `config/extensions.json` – extension → email mapping (or set `VOICEMAIL_CONF` / `EXTENSIONS_URL`).
