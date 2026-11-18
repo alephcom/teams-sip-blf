@@ -158,7 +158,7 @@ The service will:
 
 ### Run under supervisord
 
-A sample program config lives at [`deploy/supervisord/teams-sip-blf.ini`](deploy/supervisord/teams-sip-blf.ini). It assumes the binary and `.env` under `/opt/teams-sip-blf/` (cwd matters so relative `config/` paths and `godotenv` load correctly). Copy it into your supervisord conf directory, adjust `user` if needed, then `supervisorctl reread && supervisorctl update`.
+A sample program config lives at [`deploy/supervisord/teams-sip-blf.conf`](deploy/supervisord/teams-sip-blf.conf). It assumes the binary and `.env` under `/opt/teams-sip-blf/` (cwd matters so relative `config/` paths and `godotenv` load correctly). Copy it into your supervisord conf directory, adjust `user` if needed, then `supervisorctl reread && supervisorctl update`.
 
 ## Project layout
 
